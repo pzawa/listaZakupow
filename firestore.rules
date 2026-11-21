@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Dostęp tylko dla dwóch zalogowanych osób – wpisz swoje adresy e-mail
+    function isAllowed() {
+      return request.auth != null
+        && request.auth.token.email in ['ja@example.com', 'maz@example.com'];
+    }
+
+    match /items/{itemId} {
+      allow read, delete: if isAllowed();
+      allow create, update: if isAllowed()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 200
+        && request.resource.data.done is bool;
+    }
+  }
+}
