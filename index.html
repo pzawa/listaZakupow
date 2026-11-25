@@ -36,6 +36,13 @@
                margin: 20px 0 8px; color: var(--muted); font-size: .9rem; }
     .section button { background: none; border: 0; color: #c62828; cursor: pointer; font-size: .9rem; }
     .empty { text-align: center; color: var(--muted); padding: 24px 0; }
+    .progress { margin-bottom: 16px; }
+    .progress-text { display: flex; justify-content: space-between; font-size: .9rem;
+                     color: var(--muted); margin-bottom: 6px; }
+    .progress-text strong { color: var(--text); }
+    .progress-bar { height: 10px; background: #dde3dd; border-radius: 999px; overflow: hidden; }
+    .progress-fill { height: 100%; width: 0; background: var(--green); border-radius: 999px;
+                     transition: width .3s ease; }
     .login { display: flex; flex-direction: column; gap: 10px; margin-top: 40px; }
     .error { color: #c62828; font-size: .9rem; min-height: 1.2em; }
   </style>
@@ -59,6 +66,16 @@
         <input type="text" id="newItem" placeholder="Dodaj produkt…" autocomplete="off" required>
         <button class="primary" type="submit">Dodaj</button>
       </form>
+      <div id="progress" class="progress hidden">
+        <div class="progress-text">
+          <strong id="progressLeft"></strong>
+          <span id="progressCount"></span>
+        </div>
+        <div class="progress-bar" role="progressbar" aria-label="Postęp zakupów"
+             aria-valuemin="0" id="progressBar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+      </div>
       <ul id="todo"></ul>
       <div id="emptyMsg" class="empty hidden">Lista jest pusta 🎉</div>
       <div id="doneHeader" class="section hidden">
@@ -158,6 +175,27 @@
       $("done").replaceChildren(...done.map(itemEl));
       $("emptyMsg").classList.toggle("hidden", todo.length > 0);
       $("doneHeader").classList.toggle("hidden", done.length === 0);
+      renderProgress(todo.length, currentItems.length);
+    }
+
+    // Polska odmiana: 1 produkt, 2–4 produkty, 5+ produktów (ale 22 produkty, 12 produktów)
+    function plural(n, one, few, many) {
+      if (n === 1) return one;
+      const d = n % 10, dd = n % 100;
+      return d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? few : many;
+    }
+
+    function renderProgress(left, total) {
+      $("progress").classList.toggle("hidden", total === 0);
+      if (total === 0) return;
+      const bought = total - left;
+      $("progressLeft").textContent = left === 0
+        ? "Wszystko kupione ✅"
+        : `${plural(left, "Został", "Zostały", "Zostało")} ${left} ${plural(left, "produkt", "produkty", "produktów")}`;
+      $("progressCount").textContent = `${bought} / ${total}`;
+      $("progressFill").style.width = `${(bought / total) * 100}%`;
+      $("progressBar").setAttribute("aria-valuemax", total);
+      $("progressBar").setAttribute("aria-valuenow", bought);
     }
   </script>
 </body>
