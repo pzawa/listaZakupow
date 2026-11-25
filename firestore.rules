@@ -13,7 +13,8 @@ service cloud.firestore {
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 200
-        && request.resource.data.done is bool;
+        && request.resource.data.done is bool
+        && (!('order' in request.resource.data) || request.resource.data.order is number);
     }
 
     // Zapamiętane produkty (podpowiedzi przy wpisywaniu)

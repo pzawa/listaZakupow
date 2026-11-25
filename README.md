@@ -2,13 +2,22 @@
 
 Lekka, współdzielona lista zakupów dla 2 osób. Czysty HTML + JS, baza **Firebase Firestore** (darmowy plan Spark), hosting **GitHub Pages**. Zmiany synchronizują się na żywo między telefonami.
 
+## Funkcje
+
+- **Lista** – dodawanie, odhaczanie i usuwanie produktów, pasek postępu z licznikiem pozostałych produktów, przycisk „Usuń kupione”. Kolejność produktów można zmieniać, przeciągając je za przycisk ze strzałkami ⇅ (po prawej, przed ✕) (na komputerze także strzałkami ↑/↓ po zaznaczeniu uchwytu).
+- **Podpowiedzi produktów** – każdy dodany produkt jest zapamiętywany (wspólnie dla obu osób). Podczas wpisywania pojawia się do 6 podpowiedzi: najpierw pasujące od początku, potem najczęściej kupowane. Wielkość liter i polskie znaki nie mają znaczenia („zolty” znajdzie „Żółty ser”). Kliknięcie podpowiedzi od razu dodaje produkt, a ✕ obok niej usuwa go z pamięci (np. literówkę). Produkty, które już są na liście, nie są podpowiadane.
+- **Karty** – screeny kart klienta do różnych sklepów. Kliknięcie karty pokazuje ją na cały ekran na białym tle, gotową do zeskanowania przy kasie. Screen jest w przeglądarce zmniejszany i kompresowany do JPEG (maks. ok. 900 KB) i zapisywany bezpośrednio w Firestore, bo Firebase Storage nie jest dostępny dla nowych projektów na darmowym planie.
+- **Offline** – lista i karty są trzymane w lokalnym cache, więc działają w sklepie nawet przy słabym zasięgu.
+
+Dane w Firestore: `items` (lista), `products` (zapamiętane produkty), `cards` (karty klienta).
+
 ## Konfiguracja Firebase (jednorazowo, ok. 10 min)
 
 1. Wejdź na https://console.firebase.google.com → **Dodaj projekt** (Google Analytics można wyłączyć).
 2. **Build → Authentication → Get started → Sign-in method → Email/Password → Włącz.**
 3. **Authentication → Users → Add user**: dodaj dwa konta (Ty i mąż) z hasłami.
 4. **Build → Firestore Database → Create database** → wybierz lokalizację `eur3 (europe-west)` → tryb produkcyjny.
-5. **Firestore → Rules**: wklej zawartość pliku `firestore.rules`, **podmień dwa adresy e-mail** na wasze i kliknij **Publish**.
+5. **Firestore → Rules**: wklej zawartość pliku `firestore.rules`, **podmień dwa adresy e-mail** na wasze i kliknij **Publish**. Po każdej zmianie pliku `firestore.rules` trzeba go wkleić i opublikować ponownie – bez reguł dla `products` i `cards` zapis podpowiedzi i kart zostanie odrzucony.
 6. **Ustawienia projektu (⚙️) → Twoje aplikacje → ikona `</>`** → zarejestruj aplikację webową → skopiuj obiekt `firebaseConfig` do pliku `firebase-config.js`.
 7. **Authentication → Settings → Authorized domains** → dodaj `TWOJ-LOGIN.github.io`.
 

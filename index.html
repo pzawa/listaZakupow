@@ -13,16 +13,20 @@
     * { box-sizing: border-box; }
     body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
            background: var(--bg); color: var(--text); }
-    header { background: linear-gradient(135deg, var(--navy), var(--primary)); color: #fff;
-             position: sticky; top: 0; z-index: 2; }
-    .bar { padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; }
+    header { position: sticky; top: 0; z-index: 2; }
+    .bar { background: linear-gradient(135deg, var(--navy), var(--primary)); color: #fff;
+           padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; }
     header h1 { margin: 0; font-size: 1.25rem; }
     header .bar button { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.5);
                          border-radius: 8px; padding: 6px 10px; font-size: .85rem; cursor: pointer; }
-    nav.tabs { display: flex; max-width: 560px; margin: 0 auto; }
-    nav.tabs button { flex: 1; background: none; border: 0; color: rgba(255,255,255,.7); font-size: .95rem;
-                      padding: 10px 0 12px; cursor: pointer; border-bottom: 3px solid transparent; }
-    nav.tabs button.active { color: #fff; font-weight: 600; border-bottom-color: #93c5fd; }
+    .tabs-wrap { background: #fff; padding: 8px 16px; border-bottom: 1px solid var(--track);
+                 box-shadow: 0 2px 6px rgba(15,23,42,.06); }
+    nav.tabs { display: flex; gap: 4px; max-width: 528px; margin: 0 auto; padding: 4px;
+               background: #e8edf7; border-radius: 12px; }
+    nav.tabs button { flex: 1; background: none; border: 0; border-radius: 9px; color: var(--muted);
+                      font-size: .95rem; padding: 8px 0; cursor: pointer; transition: background .15s, color .15s; }
+    nav.tabs button.active { background: #fff; color: var(--primary); font-weight: 600;
+                             box-shadow: 0 1px 3px rgba(15,23,42,.15); }
     main { max-width: 560px; margin: 0 auto; padding: 16px; }
     .hidden { display: none !important; }
     form.add { display: flex; gap: 8px; margin-bottom: 16px; }
@@ -39,6 +43,13 @@
                font-size: 1.05rem; word-break: break-word; }
     li input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); flex-shrink: 0; }
     li.done label span { text-decoration: line-through; color: var(--muted); }
+    .handle { background: none; border: 0; color: #9aa6bd; padding: 8px; display: flex;
+              align-items: center; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+    .handle:focus-visible { outline: 2px solid var(--accent); border-radius: 6px; }
+    #todo li.dragging { position: relative; z-index: 1; transform: scale(1.02); cursor: grabbing;
+                        box-shadow: 0 8px 20px rgba(15,23,42,.22); outline: 2px solid var(--accent); }
+    #todo li.dragging .handle { cursor: grabbing; color: var(--accent); }
+    body.is-dragging { user-select: none; -webkit-user-select: none; }
     .del { background: none; border: 0; font-size: 1.2rem; color: var(--danger); cursor: pointer; padding: 8px; }
     .section { display: flex; justify-content: space-between; align-items: center;
                margin: 20px 0 8px; color: var(--muted); font-size: .9rem; }
@@ -99,10 +110,12 @@
       <h1>🛒 Lista zakupów</h1>
       <button id="logout" class="hidden">Wyloguj</button>
     </div>
-    <nav id="tabs" class="tabs hidden">
-      <button data-tab="list" class="active">📝 Lista</button>
-      <button data-tab="cards">💳 Karty</button>
-    </nav>
+    <div id="tabsWrap" class="tabs-wrap hidden">
+      <nav id="tabs" class="tabs">
+        <button data-tab="list" class="active">Lista</button>
+        <button data-tab="cards">Karty</button>
+      </nav>
+    </div>
   </header>
 
   <main>
@@ -196,13 +209,15 @@
       $("login").classList.toggle("hidden", !!user);
       $("app").classList.toggle("hidden", !user);
       $("logout").classList.toggle("hidden", !user);
-      $("tabs").classList.toggle("hidden", !user);
+      $("tabsWrap").classList.toggle("hidden", !user);
       unsubs.forEach((u) => u());
       unsubs = [];
       if (!user) return;
       unsubs.push(onSnapshot(query(itemsCol, orderBy("createdAt", "asc")), (snap) => {
-        currentItems = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        render();
+        currentItems = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => sortKey(a) - sortKey(b));
+        // W trakcie przeciągania nie przebudowujemy listy – odświeżymy ją po upuszczeniu
+        if (!drag) render();
       }));
       unsubs.push(onSnapshot(productsCol, (snap) => {
         products = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -242,7 +257,7 @@
     function addItem(name) {
       name = name.trim().replace(/\s+/g, " ");
       if (!name) return;
-      addDoc(itemsCol, { name, done: false, createdAt: serverTimestamp() });
+      addDoc(itemsCol, { name, done: false, order: Date.now(), createdAt: serverTimestamp() });
       rememberProduct(name);
       $("newItem").value = "";
       $("newItem").focus();
@@ -265,6 +280,23 @@
     function itemEl(item) {
       const li = document.createElement("li");
       li.className = item.done ? "done" : "";
+      li.dataset.id = item.id;
+      let handle = null;
+      if (!item.done) {
+        handle = document.createElement("button");
+        handle.type = "button";
+        handle.className = "handle";
+        handle.innerHTML = MOVE_ICON;
+        handle.title = "Przeciągnij, aby zmienić kolejność";
+        handle.setAttribute("aria-label", `Zmień kolejność: ${item.name} (strzałki góra/dół)`);
+        handle.addEventListener("pointerdown", (e) => startDrag(e, li));
+        handle.addEventListener("keydown", (e) => {
+          if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+            moveBy(item.id, e.key === "ArrowUp" ? -1 : 1);
+          }
+        });
+      }
       const label = document.createElement("label");
       const cb = document.createElement("input");
       cb.type = "checkbox";
@@ -278,9 +310,14 @@
       del.title = "Usuń";
       del.textContent = "✕";
       del.addEventListener("click", () => deleteDoc(doc(db, "items", item.id)));
-      li.append(label, del);
+      li.append(label, ...(handle ? [handle] : []), del);
       return li;
     }
+
+    // Strzałki w górę i w dół (SVG, żeby wyglądały tak samo na każdym telefonie)
+    const MOVE_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M8 3v18M4 7l4-4 4 4M16 21V3M12 17l4 4 4-4"/></svg>`;
 
     function render() {
       const todo = currentItems.filter((i) => !i.done);
@@ -291,6 +328,99 @@
       $("doneHeader").classList.toggle("hidden", done.length === 0);
       renderProgress(todo.length, currentItems.length);
     }
+
+    // ---------- Zmiana kolejności (przeciąganie) ----------
+    // Kolejność = pole "order"; starsze produkty bez niego układają się wg daty dodania
+    function sortKey(item) {
+      return item.order ?? item.createdAt?.toMillis?.() ?? Number.MAX_SAFE_INTEGER;
+    }
+
+    // Zapisuje nowe miejsce produktu na podstawie docelowej kolejności id na liście "do kupienia".
+    // Nowe "order" to środek między sąsiadami, więc zmienia się tylko jeden dokument.
+    function placeItem(id, ids) {
+      const byId = new Map(currentItems.map((i) => [i.id, i]));
+      const idx = ids.indexOf(id);
+      const prev = byId.get(ids[idx - 1]), next = byId.get(ids[idx + 1]);
+      const item = byId.get(id);
+      if (!item) return;
+      let order;
+      if (prev && next) order = (sortKey(prev) + sortKey(next)) / 2;
+      else if (prev) order = sortKey(prev) + 1000;
+      else if (next) order = sortKey(next) - 1000;
+      else return;
+      const oldIds = currentItems.filter((i) => !i.done).map((i) => i.id);
+      if (oldIds.join() === ids.join()) return;
+      item.order = order;
+      currentItems.sort((a, b) => sortKey(a) - sortKey(b));
+      updateDoc(doc(db, "items", id), { order });
+    }
+
+    function moveBy(id, delta) {
+      const ids = currentItems.filter((i) => !i.done).map((i) => i.id);
+      const from = ids.indexOf(id), to = from + delta;
+      if (from < 0 || to < 0 || to >= ids.length) return;
+      ids.splice(to, 0, ids.splice(from, 1)[0]);
+      placeItem(id, ids);
+      render();
+      document.querySelector(`#todo li[data-id="${CSS.escape(id)}"] .handle`)?.focus();
+    }
+
+    let drag = null;
+
+    function startDrag(e, li) {
+      if (drag || (e.pointerType === "mouse" && e.button !== 0)) return;
+      e.preventDefault();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      drag = { li, id: li.dataset.id, y: e.clientY, pointerId: e.pointerId };
+      li.classList.add("dragging");
+      document.body.classList.add("is-dragging");
+      requestAnimationFrame(autoScroll);
+    }
+
+    // Wstawia przeciągany element przed pierwszym, którego środek jest poniżej palca
+    function reposition() {
+      const list = $("todo");
+      const before = [...list.children].find((el) => {
+        if (el === drag.li) return false;
+        const r = el.getBoundingClientRect();
+        return drag.y < r.top + r.height / 2;
+      });
+      if (before) {
+        if (drag.li.nextElementSibling !== before) list.insertBefore(drag.li, before);
+      } else if (list.lastElementChild !== drag.li) {
+        list.append(drag.li);
+      }
+    }
+
+    // Przewijanie strony, gdy palec jest przy górnej/dolnej krawędzi ekranu
+    function autoScroll() {
+      if (!drag) return;
+      const top = document.querySelector("header").getBoundingClientRect().bottom;
+      const edge = 60;
+      let dy = 0;
+      if (drag.y < top + edge) dy = -Math.ceil((top + edge - drag.y) / 6);
+      else if (drag.y > innerHeight - edge) dy = Math.ceil((drag.y - innerHeight + edge) / 6);
+      if (dy) { scrollBy(0, dy); reposition(); }
+      requestAnimationFrame(autoScroll);
+    }
+
+    function endDrag(e) {
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      const { li, id } = drag;
+      drag = null;
+      li.classList.remove("dragging");
+      document.body.classList.remove("is-dragging");
+      placeItem(id, [...$("todo").children].map((el) => el.dataset.id));
+      render();
+    }
+
+    document.addEventListener("pointermove", (e) => {
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      drag.y = e.clientY;
+      reposition();
+    });
+    document.addEventListener("pointerup", endDrag);
+    document.addEventListener("pointercancel", endDrag);
 
     // Polska odmiana: 1 produkt, 2–4 produkty, 5+ produktów (ale 22 produkty, 12 produktów)
     function plural(n, one, few, many) {
